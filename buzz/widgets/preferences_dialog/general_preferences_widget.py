@@ -270,6 +270,26 @@ class GeneralPreferencesWidget(QWidget):
         )
         layout.addRow("", self.prevent_sleep_checkbox)
 
+        self.show_transcription_dialog_checkbox = QCheckBox(
+            _("Show the settings window when importing files")
+        )
+        self.show_transcription_dialog_checkbox.setToolTip(
+            _("When off, imported files start right away with the settings shown above the task list")
+        )
+        self.show_transcription_dialog_checkbox.setChecked(
+            self.settings.value(
+                key=Settings.Key.FILE_TRANSCRIBER_SHOW_DIALOG,
+                default_value=False,
+            )
+        )
+        self.show_transcription_dialog_checkbox.setObjectName(
+            "ShowTranscriptionDialogCheckbox"
+        )
+        self.show_transcription_dialog_checkbox.stateChanged.connect(
+            self.on_show_transcription_dialog_changed
+        )
+        layout.addRow("", self.show_transcription_dialog_checkbox)
+
         self.setLayout(layout)
 
     def on_default_export_file_name_changed(self, text: str):
@@ -387,6 +407,12 @@ class GeneralPreferencesWidget(QWidget):
     def on_prevent_sleep_changed(self, state: int):
         self.settings.set_value(
             Settings.Key.PREVENT_SLEEP_WHILE_TRANSCRIBING,
+            state == 2,
+        )
+
+    def on_show_transcription_dialog_changed(self, state: int):
+        self.settings.set_value(
+            Settings.Key.FILE_TRANSCRIBER_SHOW_DIALOG,
             state == 2,
         )
 

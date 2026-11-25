@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QFileDialog,
+    QWidget,
+    QVBoxLayout,
 )
 
 from buzz.db.entity.transcription import Transcription
@@ -48,6 +50,9 @@ from buzz.widgets.menu_bar import MenuBar
 from buzz.widgets.system_tray import SystemTray
 from buzz.widgets.preferences_dialog.models.preferences import Preferences
 from buzz.widgets.transcriber.file_transcriber_widget import FileTranscriberWidget
+from buzz.widgets.transcriber.transcription_settings_panel import (
+    TranscriptionSettingsPanel,
+)
 from buzz.widgets.transcriber.speaker_identification_options_widget import (
     SpeakerIdentificationOptions,
 )
@@ -163,7 +168,26 @@ class MainWindow(QMainWindow):
             self.on_transcriptions_updated
         )
 
-        self.setCentralWidget(self.table_widget)
+        # Transcription settings sit above the task list, so imports start
+        # right away instead of opening a settings window each time
+        self.transcription_settings_panel = TranscriptionSettingsPanel(parent=self)
+        self.transcription_settings_panel.triggered.connect(
+            self.on_file_transcriber_triggered
+        )
+        self.transcription_settings_panel.openai_access_token_changed.connect(
+            self.on_openai_access_token_changed
+        )
+        self.transcription_settings_panel.setVisible(
+            not self.should_show_transcription_dialog()
+        )
+
+        central_widget = QWidget(self)
+        central_layout = QVBoxLayout(central_widget)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        central_layout.addWidget(self.transcription_settings_panel)
+        central_layout.addWidget(self.table_widget, 1)
+        self.setCentralWidget(central_widget)
 
         # Start transcriber thread
         self.transcriber_thread = QThread()
@@ -227,6 +251,12 @@ class MainWindow(QMainWindow):
         )
         self.folder_watcher.set_preferences(preferences.folder_watch)
         self.folder_watcher.find_tasks()
+
+        show_dialog = self.should_show_transcription_dialog()
+        if not show_dialog and self.transcription_settings_panel.isHidden():
+            # The settings window may have changed the saved choices meanwhile
+            self.transcription_settings_panel.reload_preferences()
+        self.transcription_settings_panel.setVisible(not show_dialog)
 
     @pyqtSlot(bool)
     def on_queue_busy_changed(self, busy: bool):
@@ -413,9 +443,18 @@ class MainWindow(QMainWindow):
             return
         self.open_file_transcriber_widget(file_paths)
 
+    def should_show_transcription_dialog(self) -> bool:
+        return bool(
+            self.settings.value(Settings.Key.FILE_TRANSCRIBER_SHOW_DIALOG, False)
+        )
+
     def open_file_transcriber_widget(
         self, file_paths: Optional[List[str]] = None, url: Optional[str] = None
     ):
+        if not self.should_show_transcription_dialog():
+            self.transcription_settings_panel.start(file_paths=file_paths, url=url)
+            return
+
         file_transcriber_window = FileTranscriberWidget(
             file_paths=file_paths,
             url=url,
@@ -694,6 +733,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         self._quitting = True
+        self.transcription_settings_panel.cancel()
         self.system_tray.shutdown()
         self.save_geometry()
         self.settings.settings.sync()

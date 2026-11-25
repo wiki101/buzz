@@ -3,7 +3,11 @@ import pathlib
 import pytest
 
 from buzz.model_loader import TranscriptionModel
-from buzz.transcriber.file_transcriber import write_output, to_timestamp
+from buzz.transcriber.file_transcriber import (
+    write_output,
+    to_timestamp,
+    to_short_timestamp,
+)
 from buzz.transcriber.transcriber import (
     get_output_file_path,
     OutputFormat,
@@ -16,6 +20,11 @@ class TestToTimestamp:
     def test_to_timestamp(self):
         assert to_timestamp(0) == "00:00:00.000"
         assert to_timestamp(123456789) == "34:17:36.789"
+
+    def test_to_short_timestamp(self):
+        assert to_short_timestamp(0) == "00:00:00"
+        assert to_short_timestamp(83_999) == "00:01:23"
+        assert to_short_timestamp(123456789) == "34:17:36"
 
 
 def test_url_output_path_uses_safe_display_name(tmp_path):
@@ -61,3 +70,56 @@ def test_write_output(
 
     with open(output_file_path, encoding="utf-8") as output_file:
         assert output_text == output_file.read()
+
+
+def test_write_output_txt_with_timestamps(tmp_path: pathlib.Path):
+    output_file_path = tmp_path / "lecture.txt"
+    segments = [
+        Segment(83_000, 86_500, " Today we'll talk about linked lists. "),
+        Segment(87_000, 90_000, "A linked list is made of nodes."),
+        Segment(90_000, 90_500, "   "),
+        # Long pause before this one, so a blank line goes in front of it
+        Segment(3_725_000, 3_730_000, "Next topic."),
+    ]
+
+    write_output(
+        path=str(output_file_path),
+        segments=segments,
+        output_format=OutputFormat.TXT,
+        txt_timestamps=True,
+    )
+
+    assert output_file_path.read_text(encoding="utf-8") == (
+        "[00:01:23] Today we'll talk about linked lists.\n"
+        "[00:01:27] A linked list is made of nodes.\n"
+        "\n"
+        "[01:02:05] Next topic.\n"
+    )
+
+
+def test_write_output_txt_timestamps_off_keeps_plain_text(tmp_path: pathlib.Path):
+    output_file_path = tmp_path / "lecture.txt"
+    segments = [Segment(40, 299, "Bien"), Segment(299, 329, "venue dans")]
+
+    write_output(
+        path=str(output_file_path),
+        segments=segments,
+        output_format=OutputFormat.TXT,
+        txt_timestamps=False,
+    )
+
+    assert output_file_path.read_text(encoding="utf-8") == "Bien venue dans "
+
+
+def test_write_output_txt_timestamps_ignored_for_srt(tmp_path: pathlib.Path):
+    output_file_path = tmp_path / "lecture.srt"
+    segments = [Segment(40, 299, "Bien")]
+
+    write_output(
+        path=str(output_file_path),
+        segments=segments,
+        output_format=OutputFormat.SRT,
+        txt_timestamps=True,
+    )
+
+    assert output_file_path.read_text(encoding="utf-8").startswith("1\n00:00:00,040")

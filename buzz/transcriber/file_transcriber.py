@@ -316,8 +316,14 @@ def write_output(
     path: str,
     segments: List[Segment],
     output_format: OutputFormat,
-    segment_key: str = 'text'
+    segment_key: str = 'text',
+    txt_timestamps: Optional[bool] = None,
 ):
+    """Write segments to ``path`` in ``output_format``.
+
+    ``txt_timestamps`` only affects TXT output. When it is None, the
+    "TXT timestamps" setting from the transcription settings decides.
+    """
     logging.debug(
         "Writing transcription output, path = %s, output format = %s, number of segments = %s",
         path,
@@ -325,18 +331,37 @@ def write_output(
         len(segments),
     )
 
+    if output_format == OutputFormat.TXT and txt_timestamps is None:
+        txt_timestamps = txt_timestamps_enabled()
+
     with open(os.fsencode(path), "w", encoding="utf-8") as file:
         def segment_content(segment):
             content = getattr(segment, segment_key).strip()
             speaker = getattr(segment, "speaker", "").strip()
             return f"{speaker}: {content}" if speaker else content
 
-        if output_format == OutputFormat.TXT:
+        paragraph_split_time = int(os.getenv("BUZZ_PARAGRAPH_SPLIT_TIME", "2000"))
+
+        if output_format == OutputFormat.TXT and txt_timestamps:
+            # One segment per line, e.g. "[00:01:23] Today we'll talk about...".
+            # A blank line still marks a long pause, like in plain TXT.
+            lines = []
+            previous_end_time = None
+            for segment in segments:
+                content = segment_content(segment)
+                if content == "":
+                    continue
+                if previous_end_time is not None and (segment.start - previous_end_time) >= paragraph_split_time:
+                    lines.append("")
+                lines.append(f"[{to_short_timestamp(segment.start)}] {content}")
+                previous_end_time = segment.end
+
+            file.write("\n".join(lines) + ("\n" if lines else ""))
+
+        elif output_format == OutputFormat.TXT:
             combined_text = ""
             previous_end_time = None
 
-            paragraph_split_time = int(os.getenv("BUZZ_PARAGRAPH_SPLIT_TIME", "2000"))
-            
             for segment in segments:
                 if previous_end_time is not None and (segment.start - previous_end_time) >= paragraph_split_time:
                     combined_text += "\n\n"
@@ -372,6 +397,27 @@ def to_timestamp(ms: float, ms_separator=".") -> str:
     sec = int(ms / 1000)
     ms = int(ms - sec * 1000)
     return f"{hr:02d}:{min:02d}:{sec:02d}{ms_separator}{ms:03d}"
+
+
+def to_short_timestamp(ms: float) -> str:
+    """Format milliseconds as HH:MM:SS, dropping the milliseconds."""
+    total_seconds = max(0, int(ms // 1000))
+    hr, remainder = divmod(total_seconds, 60 * 60)
+    min, sec = divmod(remainder, 60)
+    return f"{hr:02d}:{min:02d}:{sec:02d}"
+
+
+def txt_timestamps_enabled() -> bool:
+    """Whether TXT exports should start each line with a timestamp."""
+    from buzz.settings.settings import Settings
+
+    try:
+        return bool(
+            Settings().value(Settings.Key.FILE_TRANSCRIBER_TXT_TIMESTAMPS, False)
+        )
+    except Exception as exc:
+        logging.debug("Could not read TXT timestamps setting: %s", exc)
+        return False
 
 # To detect when transcription source is a video
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm", ".ogm", ".wmv"}

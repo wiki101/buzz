@@ -63,7 +63,18 @@ def restore_file_transcriber_preferences():
     snapshot = {key: settings.value(key) for key in settings.allKeys()}
     settings.endGroup()
 
+    # These tests drive the settings window. The fork's default is the settings
+    # panel in the main window, which has its own tests below.
+    show_dialog_key = Settings.Key.FILE_TRANSCRIBER_SHOW_DIALOG.value
+    previous_show_dialog = settings.value(show_dialog_key)
+    settings.setValue(show_dialog_key, True)
+
     yield
+
+    if previous_show_dialog is None:
+        settings.remove(show_dialog_key)
+    else:
+        settings.setValue(show_dialog_key, previous_show_dialog)
 
     settings.beginGroup("file_transcriber")
     settings.remove("")

@@ -50,6 +50,12 @@ class Settings:
         FILE_TRANSCRIBER_LLM_PROMPT = "file-transcriber/llm-prompt"
         FILE_TRANSCRIBER_WORD_LEVEL_TIMINGS = "file-transcriber/word-level-timings"
         FILE_TRANSCRIBER_EXPORT_FORMATS = "file-transcriber/export-formats"
+        # Prefix each line of TXT exports with its start time, e.g. "[00:01:23] ..."
+        FILE_TRANSCRIBER_TXT_TIMESTAMPS = "file-transcriber/txt-timestamps"
+        # Show the settings window on every import instead of using the
+        # settings panel at the top of the main window
+        FILE_TRANSCRIBER_SHOW_DIALOG = "file-transcriber/show-dialog"
+        FILE_TRANSCRIBER_PANEL_COLLAPSED = "file-transcriber/panel-collapsed"
 
         TRANSCRIPTION_RESIZER_CREATE_NEW_TRANSCRIPT = (
             "transcription-resizer/create-new-transcript"

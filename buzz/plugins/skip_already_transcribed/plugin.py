@@ -144,6 +144,9 @@ class SkipAlreadyTranscribedPlugin(BuzzPlugin):
             if fmt == OutputFormat.TXT:
                 if not text.strip():
                     return None
+                timestamped = self._parse_timestamped_txt(text)
+                if timestamped:
+                    return timestamped
                 return [Segment(start=0, end=0, text=text.strip())]
             elif fmt == OutputFormat.SRT:
                 return self._parse_srt(text) or None
@@ -152,6 +155,37 @@ class SkipAlreadyTranscribedPlugin(BuzzPlugin):
         except Exception as exc:
             context.log.warning("Failed to parse result file %s: %s", path, exc)
         return None
+
+    @staticmethod
+    def _parse_timestamped_txt(text: str) -> Optional[List]:
+        """Parse TXT written with timestamps ("[HH:MM:SS] text" per line).
+
+        Returns None unless every non-empty line has a timestamp, so plain
+        TXT keeps being read as a single segment.
+        """
+        from buzz.transcriber.transcriber import Segment
+
+        line_pattern = re.compile(r"^\[(\d+):(\d{2}):(\d{2})\] ?(.*)$")
+        entries = []
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            match = line_pattern.match(line.strip())
+            if match is None:
+                return None
+            hours, minutes, seconds, content = match.groups()
+            start = ((int(hours) * 60 + int(minutes)) * 60 + int(seconds)) * 1000
+            entries.append((start, content.strip()))
+
+        if not entries:
+            return None
+
+        segments = []
+        for i, (start, content) in enumerate(entries):
+            # The format keeps only start times, so a line ends where the next begins
+            end = entries[i + 1][0] if i + 1 < len(entries) else start
+            segments.append(Segment(start=start, end=end, text=content))
+        return segments
 
     def _parse_srt(self, text: str) -> List:
         from buzz.transcriber.transcriber import Segment

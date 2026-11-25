@@ -4,6 +4,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QCheckBox, QFormLayout, QHBoxLayout
 
 from buzz.locale import _
+from buzz.settings.settings import Settings
 from buzz.transcriber.transcriber import (
     TranscriptionOptions,
     FileTranscriptionOptions,
@@ -72,6 +73,20 @@ class FileTranscriptionFormWidget(QWidget):
             )
             export_format_layout.addWidget(export_format_checkbox)
 
+        # Shared by every TXT export, so it is stored as an app setting rather
+        # than per transcription
+        self.txt_timestamps_checkbox = QCheckBox(_("Timestamps in TXT"), parent=self)
+        self.txt_timestamps_checkbox.setToolTip(
+            _("Start each line of TXT exports with its time, e.g. [00:01:23]")
+        )
+        self.txt_timestamps_checkbox.setChecked(
+            Settings().value(Settings.Key.FILE_TRANSCRIBER_TXT_TIMESTAMPS, False)
+        )
+        self.txt_timestamps_checkbox.stateChanged.connect(
+            self.on_txt_timestamps_changed
+        )
+        export_format_layout.addWidget(self.txt_timestamps_checkbox)
+
         file_transcription_layout.addRow(_("Export:"), export_format_layout)
 
         layout.addWidget(transcription_options_group_box)
@@ -106,6 +121,13 @@ class FileTranscriptionFormWidget(QWidget):
 
         self.transcription_options_changed.emit(
             (self.transcription_options, self.file_transcription_options)
+        )
+
+    @staticmethod
+    def on_txt_timestamps_changed(value: int):
+        Settings().set_value(
+            Settings.Key.FILE_TRANSCRIBER_TXT_TIMESTAMPS,
+            value == Qt.CheckState.Checked.value,
         )
 
     def get_on_checkbox_state_changed_callback(self, output_format: OutputFormat):
