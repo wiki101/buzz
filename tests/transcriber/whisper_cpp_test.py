@@ -744,3 +744,52 @@ class TestWhisperCppMetadata:
                 WhisperCpp.transcribe(task)
 
         assert metadata_cache.list_metadata(task.uid) == []
+
+
+def _build_command_task(word_level_timings: bool) -> FileTranscriptionTask:
+    return FileTranscriptionTask(
+        transcription_options=TranscriptionOptions(
+            language="en",
+            task=Task.TRANSCRIBE,
+            word_level_timings=word_level_timings,
+            model=TranscriptionModel(
+                model_type=ModelType.WHISPER_CPP,
+                whisper_model_size=WhisperModelSize.TINY,
+            ),
+        ),
+        file_transcription_options=FileTranscriptionOptions(),
+        model_path="/models/ggml-tiny.bin",
+        file_path="/audio/lecture.wav",
+    )
+
+
+class TestBuildCommandSegmentLength:
+    def test_splits_long_segments_by_default(self, monkeypatch):
+        monkeypatch.delenv("BUZZ_WHISPERCPP_MAX_LEN", raising=False)
+        cmd = WhisperCpp._build_command(
+            _build_command_task(False), "/audio/lecture.wav", "en", False
+        )
+        index = cmd.index("--max-len")
+        assert cmd[index + 1] == str(WhisperCpp.DEFAULT_SEGMENT_MAX_LEN)
+        assert "--split-on-word" in cmd
+
+    def test_leaves_segments_alone_with_word_level_timings(self, monkeypatch):
+        monkeypatch.delenv("BUZZ_WHISPERCPP_MAX_LEN", raising=False)
+        cmd = WhisperCpp._build_command(
+            _build_command_task(True), "/audio/lecture.wav", "en", False
+        )
+        assert "--max-len" not in cmd
+        assert "--split-on-word" not in cmd
+
+    def test_env_var_changes_or_disables_limit(self, monkeypatch):
+        monkeypatch.setenv("BUZZ_WHISPERCPP_MAX_LEN", "60")
+        cmd = WhisperCpp._build_command(
+            _build_command_task(False), "/audio/lecture.wav", "en", False
+        )
+        assert cmd[cmd.index("--max-len") + 1] == "60"
+
+        monkeypatch.setenv("BUZZ_WHISPERCPP_MAX_LEN", "0")
+        cmd = WhisperCpp._build_command(
+            _build_command_task(False), "/audio/lecture.wav", "en", False
+        )
+        assert "--max-len" not in cmd

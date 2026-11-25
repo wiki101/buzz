@@ -267,6 +267,12 @@ class WhisperCpp:
             "-f", file_to_process,
         ]
 
+        max_len = WhisperCpp._segment_max_len(task)
+        if max_len > 0:
+            # Without a limit, one segment can hold a minute of speech under a
+            # single timestamp. Split long segments at word boundaries instead.
+            cmd.extend(["--max-len", str(max_len), "--split-on-word"])
+
         if vad_enabled:
             vad_model_path = os.path.join(
                 os.path.dirname(get_whisper_cli_path()), "ggml-silero-v6.2.0.bin"
@@ -282,6 +288,27 @@ class WhisperCpp:
 
         print(f"Running Whisper CLI: {' '.join(cmd)}")
         return cmd
+
+    DEFAULT_SEGMENT_MAX_LEN = 100
+
+    @staticmethod
+    def _segment_max_len(task) -> int:
+        """Longest segment, in characters, whisper-cli should produce.
+
+        0 means no limit. Word-level timings are parsed from the tokens of each
+        segment, so segments are left alone in that mode. Set
+        BUZZ_WHISPERCPP_MAX_LEN to change the limit, or to 0 to turn it off.
+        """
+        if task.transcription_options.word_level_timings:
+            return 0
+        value = os.getenv(
+            "BUZZ_WHISPERCPP_MAX_LEN", str(WhisperCpp.DEFAULT_SEGMENT_MAX_LEN)
+        )
+        try:
+            return max(0, int(value))
+        except ValueError:
+            logging.warning("Ignoring invalid BUZZ_WHISPERCPP_MAX_LEN=%r", value)
+            return WhisperCpp.DEFAULT_SEGMENT_MAX_LEN
 
     @staticmethod
     def _whisper_env() -> dict:
